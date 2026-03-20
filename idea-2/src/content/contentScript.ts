@@ -4,8 +4,11 @@ interface Settings {
   veniceApiKey: string;
   githubToken: string;
   aiProvider: AIProvider;
+  bankrApiKey: string;
   bankrUsername: string;
   bankrEnabled: boolean;
+  neynarApiKey: string;
+  neynarEnabled: boolean;
 }
 
 interface AIConfig {
@@ -98,8 +101,11 @@ function toSettings(raw: unknown): Settings | null {
     veniceApiKey: normalizeApiKey(settings.veniceApiKey),
     githubToken: normalizeApiKey(settings.githubToken),
     aiProvider: (settings.aiProvider as AIProvider) || 'auto',
+    bankrApiKey: normalizeApiKey(settings.bankrApiKey),
     bankrUsername: typeof settings.bankrUsername === 'string' ? settings.bankrUsername : '',
-    bankrEnabled: typeof settings.bankrEnabled === 'boolean' ? settings.bankrEnabled : true
+    bankrEnabled: typeof settings.bankrEnabled === 'boolean' ? settings.bankrEnabled : true,
+    neynarApiKey: normalizeApiKey(settings.neynarApiKey),
+    neynarEnabled: typeof settings.neynarEnabled === 'boolean' ? settings.neynarEnabled : true
   };
 }
 
@@ -187,7 +193,11 @@ async function getSettingsFromStorage(): Promise<Settings | null> {
   }
 
   try {
-    const raw = await chrome.storage.local.get(['veniceApiKey', 'githubToken', 'aiProvider', 'bankrUsername', 'bankrEnabled']);
+    const raw = await chrome.storage.local.get([
+      'veniceApiKey', 'githubToken', 'aiProvider',
+      'bankrApiKey', 'bankrUsername', 'bankrEnabled',
+      'neynarApiKey', 'neynarEnabled'
+    ]);
     return toSettings(raw);
   } catch (error) {
     console.warn('Venice Reply Composer: Failed to get settings in content script context.', error);
@@ -610,7 +620,46 @@ async function showReplySuggestions(post: Post) {
   }
 }
 
-async function getReplySuggestionsWithConfig(content: string, config: AIConfig): Promise<ReplySuggestion[]> {
+async function fetchNeynarTrending(apiKey: string): Promise<string> {
+  try {
+    const response = await fetch('https://api.neynar.com/v2/farcaster/feed/trending?limit=5&time_window=24h', {
+      headers: { 'api_key': apiKey }
+    });
+    if (!response.ok) return '';
+    
+    const data = await response.json();
+    const casts = data?.casts || [];
+    if (casts.length === 0) return '';
+    
+    // Extract trending topics from cast text
+    const topics = new Set<string>();
+    const tokens = new Set<string>();
+    
+    for (const cast of casts) {
+      const text = cast?.text || '';
+      // Extract hashtags
+      const hashtags = text.match(/#[A-Za-z][A-Za-z0-9_]*/g) || [];
+      hashtags.forEach((h: string) => topics.add(h.toLowerCase()));
+      // Extract cashtags
+      const cashtags = text.match(/\$[A-Za-z][A-Za-z0-9]*/g) || [];
+      cashtags.forEach((c: string) => tokens.add(c.toUpperCase()));
+    }
+    
+    const lines: string[] = ['[Trending on Farcaster]'];
+    if (tokens.size > 0) lines.push(`Tokens: ${Array.from(tokens).slice(0, 5).join(', ')}`);
+    if (topics.size > 0) lines.push(`Topics: ${Array.from(topics).slice(0, 5).join(', ')}`);
+    
+    return lines.length > 1 ? lines.join('\n') : '';
+  } catch {
+    return '';
+  }
+}
+
+async function getReplySuggestionsWithConfig(content: string, config: AIConfig, trendingContext?: string): Promise<ReplySuggestion[]> {
+  const systemPrompt = trendingContext
+    ? `You generate concise, high-quality social replies. Return 5 unique replies, each under 280 characters.\n\n${trendingContext}`
+    : 'You generate concise, high-quality social replies. Return 5 unique replies, each under 280 characters.';
+
   const response = await fetch(`${config.baseURL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -622,7 +671,7 @@ async function getReplySuggestionsWithConfig(content: string, config: AIConfig):
       messages: [
         {
           role: 'system',
-          content: 'You generate concise, high-quality social replies. Return 5 unique replies, each under 280 characters.'
+          content: systemPrompt
         },
         {
           role: 'user',
@@ -663,14 +712,20 @@ async function getReplySuggestions(content: string, settings: Settings): Promise
     throw new Error('No AI provider configured');
   }
 
+  // Fetch trending context if Neynar is enabled
+  let trendingContext = '';
+  if (settings.neynarEnabled && settings.neynarApiKey) {
+    trendingContext = await fetchNeynarTrending(settings.neynarApiKey);
+  }
+
   try {
-    return await getReplySuggestionsWithConfig(content, config);
+    return await getReplySuggestionsWithConfig(content, config, trendingContext);
   } catch (error) {
     // Try fallback provider in auto mode
     const fallback = getFallbackConfig(settings, config.provider);
     if (fallback) {
       console.log(`Venice Reply Composer: ${config.provider} failed, trying ${fallback.provider}`);
-      return await getReplySuggestionsWithConfig(content, fallback);
+      return await getReplySuggestionsWithConfig(content, fallback, trendingContext);
     }
     throw error;
   }
@@ -756,6 +811,61 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
     return;
   }
 
+  // If Bankr API key is configured, use the Agent API
+  if (settings?.bankrApiKey?.trim()) {
+    try {
+      showTransientNotice('Submitting trade to Bankr...');
+      
+      const prompt = `swap ${parsedAmount} ETH to ${selectedToken} on base`;
+      const response = await fetch('https://api.bankr.bot/agent/prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': settings.bankrApiKey.trim()
+        },
+        body: JSON.stringify({ prompt })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Bankr API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      if (data.success && data.jobId) {
+        showTransientNotice(`Trade submitted! Job ID: ${data.jobId.slice(0, 8)}...`);
+        
+        // Poll for result (simplified - just show status)
+        setTimeout(async () => {
+          try {
+            const statusResponse = await fetch(`https://api.bankr.bot/agent/job/${data.jobId}`, {
+              headers: { 'X-API-Key': settings.bankrApiKey.trim() }
+            });
+            const statusData = await statusResponse.json();
+            if (statusData.status === 'completed') {
+              showTransientNotice('Trade completed! ✅');
+            } else if (statusData.status === 'failed') {
+              showTransientNotice('Trade failed: ' + (statusData.error || 'Unknown error'));
+            } else {
+              showTransientNotice(`Trade status: ${statusData.status}`);
+            }
+          } catch {
+            // Ignore polling errors
+          }
+        }, 5000);
+        
+        return;
+      } else {
+        throw new Error(data.message || 'Failed to submit trade');
+      }
+    } catch (error) {
+      console.error('Bankr API trade error:', error);
+      showTransientNotice('Bankr API error - falling back to link mode');
+      // Fall through to link mode
+    }
+  }
+
+  // Fallback: Open Bankr trade link
   const url = new URL('https://bankr.bot/trade');
   url.searchParams.set('tokenIn', 'ETH');
   url.searchParams.set('tokenOut', selectedToken);
