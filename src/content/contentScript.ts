@@ -30,7 +30,25 @@ let decoratedPostCount = 0;
 const PLATFORM_SELECTORS: Record<Platform, string[]> = {
   twitter: ['article[data-testid="tweet"]', 'article[role="article"]'],
   reddit: ['shreddit-post', 'article', 'div[data-testid="post-container"]', 'div[data-test-id="post-content"]'],
-  farcaster: ['[data-post-id]', '[data-testid="cast"]', '[data-testid="cast-item"]', '[data-testid="feed-item"]', '[role="article"]', 'article']
+  farcaster: [
+    // Standard testid selectors
+    '[data-post-id]',
+    '[data-testid="cast"]',
+    '[data-testid="cast-item"]', 
+    '[data-testid="feed-item"]',
+    '[data-cast-id]',
+    '[data-fid]',
+    // Role-based (most reliable across redesigns)
+    '[role="article"]',
+    'article',
+    // Next.js SPA common patterns
+    '[class*="cast"][class*="item"]',
+    '[class*="cast"][class*="card"]',
+    '[class*="feed"][class*="item"]',
+    // Farcaster.xyz specific
+    'div[tabindex="0"][class*="cast"]',
+    'li[class*="cast"]',
+  ]
 };
 
 function normalizeApiKey(value: unknown): string {
