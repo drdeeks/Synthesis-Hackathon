@@ -1,4 +1,0 @@
-
-> @project14/contrib-attrib@1.0.0 test
-> jest
-
