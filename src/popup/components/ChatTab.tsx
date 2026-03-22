@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getSettings } from '../../shared/storage';
-import { getModelById } from '../../shared/models';
+import { type Settings } from '../../shared/storage';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -8,286 +7,145 @@ interface ChatMessage {
   timestamp: number;
 }
 
-interface ChatHistory {
-  messages: ChatMessage[];
-  model?: string;
+interface Props {
+  settings: Settings;
 }
 
-export default function ChatTab() {
+const MODELS = [
+  { id: 'venice-uncensored', label: 'Venice Uncensored' },
+  { id: 'llama-3.3-70b', label: 'Llama 3.3 70B' },
+  { id: 'mistral-31-24b', label: 'Mistral 31 24B' },
+  { id: 'deepseek-r1-671b', label: 'DeepSeek R1 671B' },
+];
+
+export default function ChatTab({ settings }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [currentModel, setCurrentModel] = useState<string>('');
+  const [selectedModel, setSelectedModel] = useState(MODELS[0].id);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadChatHistory();
-  }, []);
-
-  useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  async function loadChatHistory() {
-    try {
-      const result = await chrome.storage.local.get(['chatHistory']);
-      if (result.chatHistory) {
-        const history: ChatHistory = result.chatHistory;
-        setMessages(history.messages || []);
-        setCurrentModel(history.model || '');
-      }
-    } catch (err) {
-      console.error('Failed to load chat history:', err);
-    }
-  }
-
-  async function saveChatHistory() {
-    try {
-      await chrome.storage.local.set({
-        chatHistory: {
-          messages,
-          model: currentModel
-        }
-      });
-    } catch (err) {
-      console.error('Failed to save chat history:', err);
-    }
-  }
-
-  function scrollToBottom() {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }
-
   async function sendMessage() {
-    if (!input.trim() || loading) return;
+    const text = input.trim();
+    if (!text || loading) return;
 
-    const userMessage: ChatMessage = {
-      role: 'user',
-      content: input.trim(),
-      timestamp: Date.now()
-    };
-
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
+    const userMsg: ChatMessage = { role: 'user', content: text, timestamp: Date.now() };
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setLoading(true);
 
     try {
-      const settings = await getSettings();
-      if (!settings) {
-        throw new Error('No settings found');
-      }
+      const apiKey = settings.veniceApiKey?.trim() || settings.bankrApiKey?.trim();
+      if (!apiKey) throw new Error('No API key configured. Add a Venice key in Settings.');
 
-      // Try providers in order: Venice -> Bankr -> GitHub
-      let response: string | null = null;
-      let usedModel = '';
+      const isVenice = !!settings.veniceApiKey?.trim();
+      const endpoint = isVenice
+        ? 'https://api.venice.ai/api/v1/chat/completions'
+        : 'https://api.bankr.bot/v1/chat/completions';
 
-      if (settings.veniceApiKey?.trim()) {
-        try {
-          const model = settings.veniceModel || 'venice-uncensored';
-          response = await callVenice(settings.veniceApiKey, model, newMessages);
-          usedModel = model;
-        } catch (err) {
-          console.warn('Venice failed, trying Bankr...', err);
-        }
-      }
+      const history = [...messages, userMsg].map(m => ({ role: m.role, content: m.content }));
 
-      if (!response && settings.bankrApiKey?.trim()) {
-        try {
-          const model = settings.bankrModel || 'gemini-2.5-flash';
-          response = await callBankr(settings.bankrApiKey, model, newMessages);
-          usedModel = model;
-        } catch (err) {
-          console.warn('Bankr failed, trying GitHub...', err);
-        }
-      }
-
-      if (!response && settings.githubToken?.trim()) {
-        try {
-          const model = settings.githubModel || 'gpt-4o-mini';
-          response = await callGitHub(settings.githubToken, model, newMessages);
-          usedModel = model;
-        } catch (err) {
-          console.warn('GitHub failed', err);
-        }
-      }
-
-      if (!response) {
-        throw new Error('All AI providers failed');
-      }
-
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: response,
-        timestamp: Date.now()
-      };
-
-      const updatedMessages = [...newMessages, assistantMessage];
-      setMessages(updatedMessages);
-      setCurrentModel(usedModel);
-
-      // Save after successful response
-      await chrome.storage.local.set({
-        chatHistory: {
-          messages: updatedMessages,
-          model: usedModel
-        }
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: selectedModel,
+          messages: history,
+          max_tokens: 1024,
+          temperature: 0.7,
+        }),
       });
 
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`API error ${res.status}: ${errText.slice(0, 120)}`);
+      }
+
+      const data = await res.json();
+      const reply = data?.choices?.[0]?.message?.content || 'No response received.';
+
+      setMessages(prev => [...prev, { role: 'assistant', content: reply, timestamp: Date.now() }]);
     } catch (err) {
-      console.error('Chat error:', err);
-      const errorMessage: ChatMessage = {
-        role: 'assistant',
-        content: '❌ Failed to get response. Please check your API keys in Settings.',
-        timestamp: Date.now()
-      };
-      setMessages([...newMessages, errorMessage]);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setMessages(prev => [...prev, { role: 'assistant', content: `❌ ${msg}`, timestamp: Date.now() }]);
     } finally {
       setLoading(false);
     }
   }
 
-  async function callVenice(apiKey: string, model: string, messages: ChatMessage[]): Promise<string> {
-    const response = await fetch('https://api.venice.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
-        max_tokens: 2000,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Venice API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data?.choices?.[0]?.message?.content || '';
-  }
-
-  async function callBankr(apiKey: string, model: string, messages: ChatMessage[]): Promise<string> {
-    const response = await fetch('https://llm.bankr.bot/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey
-      },
-      body: JSON.stringify({
-        model,
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
-        max_tokens: 2000,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Bankr API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data?.choices?.[0]?.message?.content || '';
-  }
-
-  async function callGitHub(token: string, model: string, messages: ChatMessage[]): Promise<string> {
-    const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
-        max_tokens: 2000,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data?.choices?.[0]?.message?.content || '';
-  }
-
-  async function clearConversation() {
-    if (confirm('Clear entire conversation history?')) {
-      setMessages([]);
-      setCurrentModel('');
-      await chrome.storage.local.remove('chatHistory');
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
     }
   }
-
-  const modelInfo = currentModel ? getModelById(currentModel) : null;
 
   return (
     <div className="chat-tab">
-      <div className="chat-header">
-        <div className="chat-info">
-          {modelInfo ? (
-            <span className="model-indicator">
-              {modelInfo.name} ({modelInfo.provider})
-            </span>
-          ) : (
-            <span className="model-indicator">No active model</span>
-          )}
-        </div>
-        <button
-          className="clear-btn"
-          onClick={clearConversation}
-          disabled={messages.length === 0}
+      {/* Model picker */}
+      <div className="chat-model-bar">
+        <select
+          className="model-select"
+          value={selectedModel}
+          onChange={e => setSelectedModel(e.target.value)}
         >
-          Clear
-        </button>
+          {MODELS.map(m => (
+            <option key={m.id} value={m.id}>{m.label}</option>
+          ))}
+        </select>
       </div>
 
+      {/* Messages */}
       <div className="chat-messages">
-        {messages.length === 0 && (
+        {messages.length === 0 ? (
           <div className="chat-empty">
-            <p>👋 Start a conversation</p>
-            <p className="help-text">Ask anything — replies use your configured AI models</p>
+            <div className="chat-empty-icon">💬</div>
+            <p className="chat-empty-title">Start a conversation</p>
+            <p className="chat-empty-sub">Ask about crypto trends, Farcaster topics, or anything else</p>
           </div>
+        ) : (
+          messages.map((msg, i) => (
+            <div key={i} className={`chat-message chat-message-${msg.role}`}>
+              <div className="message-bubble">{msg.content}</div>
+            </div>
+          ))
         )}
-
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`chat-message ${msg.role}`}>
-            <div className="message-content">{msg.content}</div>
-          </div>
-        ))}
-
         {loading && (
-          <div className="chat-message assistant">
-            <div className="message-content typing">
-              <span></span><span></span><span></span>
+          <div className="chat-message chat-message-assistant">
+            <div className="message-bubble message-loading">
+              <span className="dot">·</span>
+              <span className="dot">·</span>
+              <span className="dot">·</span>
             </div>
           </div>
         )}
-
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="chat-input-container">
+      {/* Input */}
+      <div className="chat-input-row">
         <input
           type="text"
           className="chat-input"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           disabled={loading}
         />
         <button
-          className="send-btn"
+          className="chat-send-btn"
           onClick={sendMessage}
           disabled={loading || !input.trim()}
         >
-          {loading ? '...' : 'Send'}
+          ➤
         </button>
       </div>
     </div>

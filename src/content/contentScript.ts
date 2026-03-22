@@ -1,21 +1,10 @@
 import { injectStyles } from "./injectStyles";
-interface ResponseTypeSettings {
-  agreeReply: boolean;
-  againstReply: boolean;
-  forQuote: boolean;
-  againstQuote: boolean;
-}
-
 interface Settings {
   veniceApiKey: string;
   bankrUsername: string;
   bankrEnabled: boolean;
   bankrApiKey: string;
   githubToken: string;
-  responseTypes: ResponseTypeSettings;
-  veniceModel?: string;
-  bankrModel?: string;
-  githubModel?: string;
 }
 
 type Platform = 'farcaster' | 'twitter' | 'reddit';
@@ -42,25 +31,7 @@ let decoratedPostCount = 0;
 const PLATFORM_SELECTORS: Record<Platform, string[]> = {
   twitter: ['article[data-testid="tweet"]', 'article[role="article"]'],
   reddit: ['shreddit-post', 'article', 'div[data-testid="post-container"]', 'div[data-test-id="post-content"]'],
-  farcaster: [
-    // Standard testid selectors
-    '[data-post-id]',
-    '[data-testid="cast"]',
-    '[data-testid="cast-item"]', 
-    '[data-testid="feed-item"]',
-    '[data-cast-id]',
-    '[data-fid]',
-    // Role-based (most reliable across redesigns)
-    '[role="article"]',
-    'article',
-    // Next.js SPA common patterns
-    '[class*="cast"][class*="item"]',
-    '[class*="cast"][class*="card"]',
-    '[class*="feed"][class*="item"]',
-    // Farcaster.xyz specific
-    'div[tabindex="0"][class*="cast"]',
-    'li[class*="cast"]',
-  ]
+  farcaster: ['[data-post-id]', '[data-testid="cast"]', '[data-testid="cast-item"]', '[data-testid="feed-item"]', '[role="article"]', 'article']
 };
 
 function normalizeApiKey(value: unknown): string {
@@ -106,23 +77,12 @@ function toSettings(raw: unknown): Settings | null {
     return null;
   }
 
-  const defaultResponseTypes: ResponseTypeSettings = {
-    agreeReply: true,
-    againstReply: true,
-    forQuote: false,
-    againstQuote: false
-  };
-
   return {
     veniceApiKey: normalizeApiKey(settings.veniceApiKey),
     bankrUsername: typeof settings.bankrUsername === 'string' ? settings.bankrUsername : '',
     bankrEnabled: typeof settings.bankrEnabled === 'boolean' ? settings.bankrEnabled : true,
     bankrApiKey: normalizeApiKey(settings.bankrApiKey),
-    githubToken: normalizeApiKey(settings.githubToken),
-    responseTypes: settings.responseTypes || defaultResponseTypes,
-    veniceModel: settings.veniceModel,
-    bankrModel: settings.bankrModel,
-    githubModel: settings.githubModel
+    githubToken: normalizeApiKey(settings.githubToken)
   };
 }
 
@@ -166,7 +126,6 @@ async function getSettingsFromStorage(): Promise<Settings | null> {
 
 export async function contentScript() {
   injectStyles();
-  
   if (document.readyState !== 'complete') {
     await new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
   }
@@ -189,16 +148,11 @@ export async function contentScript() {
   scanAndDecorate(document.body, platform);
 
   if (platform === 'farcaster') {
-    // SPA retry: farcaster.xyz loads content lazily — scan multiple times
-    const retryDelays = [800, 1400, 2500, 4000, 6000];
-    retryDelays.forEach(delay => {
-      window.setTimeout(() => {
-        scanAndDecorate(document.body, platform);
-        if (decoratedPostCount === 0) {
-          ensureFarcasterFallbackLauncher();
-        }
-      }, delay);
-    });
+    window.setTimeout(() => {
+      if (decoratedPostCount === 0) {
+        ensureFarcasterFallbackLauncher();
+      }
+    }, 1400);
   }
 
   observePosts(platform);
@@ -276,8 +230,7 @@ function extractPosts(container: HTMLElement, platform: Platform, allowFarcaster
     }
 
     const content = getPostContent(element, platform);
-    const minLength = platform === 'farcaster' ? 5 : 20;
-    if (!content || content.length < minLength) {
+    if (!content || content.length < 20) {
       return;
     }
 
@@ -646,7 +599,7 @@ function getProviderChain(settings: Settings): AIProvider[] {
     providers.push({
       name: 'Venice',
       url: 'https://api.venice.ai/api/v1/chat/completions',
-      model: settings.veniceModel || 'venice-uncensored',
+      model: 'venice-uncensored',
       authHeader: (k) => ({ Authorization: `Bearer ${k}` }),
       key: settings.veniceApiKey.trim()
     });
@@ -657,7 +610,7 @@ function getProviderChain(settings: Settings): AIProvider[] {
     providers.push({
       name: 'Bankr',
       url: 'https://llm.bankr.bot/v1/chat/completions',
-      model: settings.bankrModel || 'gemini-2.5-flash',
+      model: 'gemini-2.5-flash',
       authHeader: (k) => ({ 'X-API-Key': k }),
       key: settings.bankrApiKey.trim()
     });
@@ -668,7 +621,7 @@ function getProviderChain(settings: Settings): AIProvider[] {
     providers.push({
       name: 'GitHub',
       url: 'https://models.inference.ai.azure.com/chat/completions',
-      model: settings.githubModel || 'gpt-4o-mini',
+      model: 'gpt-4o-mini',
       authHeader: (k) => ({ Authorization: `Bearer ${k}` }),
       key: settings.githubToken.trim()
     });
@@ -677,24 +630,7 @@ function getProviderChain(settings: Settings): AIProvider[] {
   return providers;
 }
 
-async function callAIProvider(provider: AIProvider, content: string, responseTypes?: ResponseTypeSettings): Promise<string> {
-  // Build system prompt based on enabled response types
-  let systemPrompt = 'You generate concise, high-quality social replies. ';
-  
-  if (responseTypes) {
-    const enabledTypes: string[] = [];
-    if (responseTypes.agreeReply) enabledTypes.push('agreeable/supportive replies');
-    if (responseTypes.againstReply) enabledTypes.push('counterpoint/critical replies');
-    if (responseTypes.forQuote) enabledTypes.push('quote tweets agreeing');
-    if (responseTypes.againstQuote) enabledTypes.push('quote tweets disagreeing');
-    
-    if (enabledTypes.length > 0) {
-      systemPrompt += `Generate these types: ${enabledTypes.join(', ')}. `;
-    }
-  }
-  
-  systemPrompt += 'Return 5 unique replies, each under 280 characters.';
-
+async function callAIProvider(provider: AIProvider, content: string): Promise<string> {
   const response = await fetch(provider.url, {
     method: 'POST',
     headers: {
@@ -706,7 +642,7 @@ async function callAIProvider(provider: AIProvider, content: string, responseTyp
       messages: [
         {
           role: 'system',
-          content: systemPrompt
+          content: 'You generate concise, high-quality social replies. Return 5 unique replies, each under 280 characters.'
         },
         { role: 'user', content }
       ],
@@ -729,22 +665,7 @@ async function callAIProvider(provider: AIProvider, content: string, responseTyp
 }
 
 async function getReplySuggestions(content: string, apiKey: string): Promise<ReplySuggestion[]> {
-  const defaultResponseTypes: ResponseTypeSettings = {
-    agreeReply: true,
-    againstReply: true,
-    forQuote: false,
-    againstQuote: false
-  };
-  
-  const settings = cachedSettings || { 
-    veniceApiKey: apiKey, 
-    bankrUsername: '', 
-    bankrEnabled: true, 
-    bankrApiKey: '', 
-    githubToken: '',
-    responseTypes: defaultResponseTypes
-  };
-  
+  const settings = cachedSettings || { veniceApiKey: apiKey, bankrUsername: '', bankrEnabled: true, bankrApiKey: '', githubToken: '' };
   const providers = getProviderChain(settings);
 
   if (providers.length === 0) {
@@ -755,7 +676,7 @@ async function getReplySuggestions(content: string, apiKey: string): Promise<Rep
   for (const provider of providers) {
     try {
       console.log(`Venice Reply Composer: trying ${provider.name}...`);
-      const rawContent = await callAIProvider(provider, content, settings.responseTypes);
+      const rawContent = await callAIProvider(provider, content);
 
       const unique = new Set<string>();
       rawContent
@@ -901,27 +822,6 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
   let connectedAddress = '';
   const ethereum = (window as unknown as Record<string, unknown>).ethereum as { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } | undefined;
 
-  // Helper to update wallet UI
-  async function updateWalletUI(address: string) {
-    connectedAddress = address;
-    const short = address.slice(0, 6) + '...' + address.slice(-4);
-    walletInfo.textContent = `✅ ${short}`;
-    walletInfo.style.color = '#4ade80';
-    connectBtn.textContent = 'Connected';
-    connectBtn.style.background = '#1a3a1a';
-    connectBtn.disabled = true;
-
-    // Fetch balance
-    if (ethereum) {
-      try {
-        const balHex = await ethereum.request({ method: 'eth_getBalance', params: [address, 'latest'] }) as string;
-        const balEth = parseInt(balHex, 16) / 1e18;
-        walletBalance.textContent = `${balEth.toFixed(4)} ETH`;
-        walletBalance.style.display = 'inline';
-      } catch { /* balance fetch optional */ }
-    }
-  }
-
   connectBtn.onclick = async () => {
     if (!ethereum) {
       walletInfo.textContent = '❌ No wallet found';
@@ -932,11 +832,21 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
       connectBtn.textContent = '...';
       const accounts = await ethereum.request({ method: 'eth_requestAccounts' }) as string[];
       if (accounts?.length > 0) {
-        await updateWalletUI(accounts[0]);
-        // Save to storage for cross-context sharing
+        connectedAddress = accounts[0];
+        const short = connectedAddress.slice(0, 6) + '...' + connectedAddress.slice(-4);
+        walletInfo.textContent = `✅ ${short}`;
+        walletInfo.style.color = '#4ade80';
+        connectBtn.textContent = 'Connected';
+        connectBtn.style.background = '#1a3a1a';
+        connectBtn.disabled = true;
+
+        // Fetch balance
         try {
-          await chrome.storage.local.set({ connectedWalletAddress: accounts[0] });
-        } catch { /* storage save optional */ }
+          const balHex = await ethereum.request({ method: 'eth_getBalance', params: [connectedAddress, 'latest'] }) as string;
+          const balEth = parseInt(balHex, 16) / 1e18;
+          walletBalance.textContent = `${balEth.toFixed(4)} ETH`;
+          walletBalance.style.display = 'inline';
+        } catch { /* balance fetch optional */ }
       }
     } catch (err) {
       walletInfo.textContent = '❌ Connection rejected';
@@ -945,31 +855,30 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
     }
   };
 
-  // Auto-connect: check storage first (from popup), then eth_accounts
-  (async () => {
-    try {
-      // Try storage first (connected via popup)
-      const stored = await chrome.storage.local.get(['connectedWalletAddress']);
-      if (stored.connectedWalletAddress) {
-        await updateWalletUI(stored.connectedWalletAddress);
-        return;
+  // Auto-connect if already authorized
+  if (ethereum) {
+    ethereum.request({ method: 'eth_accounts' }).then((accounts) => {
+      const accts = accounts as string[];
+      if (accts?.length > 0) {
+        connectedAddress = accts[0];
+        const short = connectedAddress.slice(0, 6) + '...' + connectedAddress.slice(-4);
+        walletInfo.textContent = `✅ ${short}`;
+        walletInfo.style.color = '#4ade80';
+        connectBtn.textContent = 'Connected';
+        connectBtn.style.background = '#1a3a1a';
+        connectBtn.disabled = true;
+        ethereum.request({ method: 'eth_getBalance', params: [connectedAddress, 'latest'] }).then((balHex) => {
+          const balEth = parseInt(balHex as string, 16) / 1e18;
+          walletBalance.textContent = `${balEth.toFixed(4)} ETH`;
+          walletBalance.style.display = 'inline';
+        }).catch(() => {});
       }
-    } catch { /* storage read failed, continue to eth_accounts */ }
-
-    // Fallback: check if wallet already authorized via eth_accounts
-    if (ethereum) {
-      try {
-        const accounts = await ethereum.request({ method: 'eth_accounts' }) as string[];
-        if (accounts?.length > 0) {
-          await updateWalletUI(accounts[0]);
-        }
-      } catch { /* eth_accounts failed */ }
-    } else {
-      connectBtn.textContent = 'No Wallet';
-      connectBtn.disabled = true;
-      connectBtn.style.background = '#333';
-    }
-  })();
+    }).catch(() => {});
+  } else {
+    connectBtn.textContent = 'No Wallet';
+    connectBtn.disabled = true;
+    connectBtn.style.background = '#333';
+  }
 
   walletStatus.appendChild(walletInfo);
   walletStatus.appendChild(walletBalance);
