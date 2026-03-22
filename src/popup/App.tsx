@@ -20,9 +20,7 @@ function normalizeApiKeyInput(rawValue: string): string {
     (normalized.startsWith('"') && normalized.endsWith('"')) ||
     (normalized.startsWith("'") && normalized.endsWith("'")) ||
     (normalized.startsWith('`') && normalized.endsWith('`'))
-  ) {
-    normalized = normalized.slice(1, -1).trim();
-  }
+  ) normalized = normalized.slice(1, -1).trim();
   return normalized;
 }
 
@@ -36,16 +34,13 @@ export function App() {
     githubToken: '',
     responseTypes: { agreeReply: true, againstReply: false, forQuote: false, againstQuote: false }
   });
-  const [status, setStatus] = useState<string>('');
+  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-
+  const [error, setError] = useState<string | null>(null);
   const version = getExtensionVersion();
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
+  useEffect(() => { loadSettings(); }, []);
 
   async function loadSettings() {
     try {
@@ -78,11 +73,10 @@ export function App() {
 
   const hasVeniceKey = !!settings.veniceApiKey.trim();
   const hasBankrKey = !!settings.bankrApiKey.trim();
-  const maskedKey = hasVeniceKey ? `••••${settings.veniceApiKey.trim().slice(-4)}` : 'Not set';
 
   return (
     <div className="popup-container">
-      {/* Header */}
+      {/* Tab bar */}
       <div className="popup-header">
         <nav className="tab-nav">
           <button className={`tab-btn${tab === 'home' ? ' active' : ''}`} onClick={() => setTab('home')}>
@@ -97,69 +91,71 @@ export function App() {
         </nav>
       </div>
 
-      {/* Main content */}
       <div className="popup-main">
+        {/* ── HOME ── */}
         {tab === 'home' && (
           <div className="home-tab">
-            {/* Hero card */}
+            {/* Hero */}
             <div className="hero-card">
-              <div className="hero-eyebrow">VENICE + BANKR + NEYNAR</div>
+              <p className="hero-eyebrow">Venice · Bankr · Neynar</p>
               <h1 className="hero-title">Venice Reply Composer</h1>
-              <p className="hero-subtitle">AI replies with trading &amp; trending context.</p>
+              <p className="hero-subtitle">Private AI replies with crypto trading context.</p>
             </div>
 
-            {/* Status card */}
-            <div className="status-card">
+            {/* Status */}
+            <div className="home-status-card">
               <div className="status-row">
                 <span className="status-label">Extension</span>
-                <span className={`status-badge${hasVeniceKey ? ' badge-active' : ' badge-inactive'}`}>
+                <span className={`status-badge ${hasVeniceKey ? 'badge-active' : 'badge-inactive'}`}>
                   {hasVeniceKey ? 'Active' : 'Setup Required'}
                 </span>
               </div>
               <p className="status-detail">
-                {hasVeniceKey ? 'Ready on Farcaster, X/Twitter, and Reddit.' : 'Add a Venice API key in Settings.'}
+                {hasVeniceKey
+                  ? 'Ready on Farcaster, X/Twitter, and Reddit.'
+                  : 'Add a Venice API key in Settings to activate.'}
               </p>
             </div>
 
             {/* Provider grid */}
             <div className="provider-grid">
               <div className={`provider-card${hasVeniceKey ? ' card-active' : ''}`}>
-                <div className="provider-icon">AI</div>
+                <div className="provider-icon">🤖</div>
                 <div className="provider-name">Venice</div>
-                <div className="provider-status">{hasVeniceKey ? '(primary)' : 'Not set'}</div>
+                <div className="provider-status">{hasVeniceKey ? 'Primary' : 'Not set'}</div>
               </div>
               <div className={`provider-card${hasBankrKey ? ' card-active' : ''}`}>
                 <div className="provider-icon">₿</div>
                 <div className="provider-name">Bankr</div>
-                <div className="provider-status">{hasBankrKey ? 'API Connected' : 'Not set'}</div>
+                <div className="provider-status">{hasBankrKey ? 'Connected' : 'Not set'}</div>
               </div>
               <div className="provider-card card-active">
                 <div className="provider-icon">📡</div>
                 <div className="provider-name">Neynar</div>
-                <div className="provider-status">Auto (Built-in)</div>
+                <div className="provider-status">Built-in</div>
               </div>
             </div>
 
-            {/* Open Chat CTA */}
+            {/* Open chat CTA */}
             <button className="open-chat-btn" onClick={() => setTab('chat')}>
               💬 Open Chat
             </button>
 
-            <div className="version-label">v{version}</div>
+            <p className="version-label">v{version}</p>
           </div>
         )}
 
-        {tab === 'chat' && (
-          <ChatTab settings={settings} />
-        )}
+        {/* ── CHAT ── */}
+        {tab === 'chat' && <ChatTab settings={settings} />}
 
+        {/* ── SETTINGS ── */}
         {tab === 'settings' && (
           <div className="settings-tab">
             <h2 className="settings-title">Settings</h2>
 
             {error && (
               <div className="settings-error">
-                {error}
+                <span>{error}</span>
                 <button onClick={() => setError(null)}>×</button>
               </div>
             )}
@@ -169,8 +165,8 @@ export function App() {
               <div className="section-header">
                 <span className="section-icon">🤖</span>
                 <span className="section-label">AI Provider</span>
-                <span className={`section-badge${hasVeniceKey ? ' badge-active' : ' badge-inactive'}`}>
-                  {hasVeniceKey ? 'Venice (primary)' : 'Not set'}
+                <span className={`section-badge ${hasVeniceKey ? 'badge-active' : 'badge-inactive'}`}>
+                  {hasVeniceKey ? 'Venice active' : 'Not set'}
                 </span>
               </div>
               <div className="field-group">
@@ -183,10 +179,10 @@ export function App() {
                   placeholder="VENICE_INFERENCE_KEY_..."
                   disabled={saving}
                 />
-                <p className="field-help">Private inference — no data retention. Get key from venice.ai</p>
+                <p className="field-help">Private inference — zero data retention.</p>
               </div>
               <div className="field-group">
-                <label className="field-label">GitHub Token (Free AI Fallback)</label>
+                <label className="field-label">GitHub Token (Free Fallback)</label>
                 <input
                   type="password"
                   className="field-input"
@@ -195,17 +191,17 @@ export function App() {
                   placeholder="GitHub personal access token"
                   disabled={saving}
                 />
-                <p className="field-help">Uses GitHub Models (gpt-4o-mini) as free fallback.</p>
+                <p className="field-help">Uses GitHub Models (gpt-4o-mini) as free third-tier fallback.</p>
               </div>
             </div>
 
-            {/* Bankr Trading */}
+            {/* Bankr */}
             <div className="settings-section">
               <div className="section-header">
                 <span className="section-icon">₿</span>
                 <span className="section-label">Bankr Trading</span>
-                <span className={`section-badge${hasBankrKey ? ' badge-active' : ' badge-inactive'}`}>
-                  {hasBankrKey ? 'API Connected' : 'Not set'}
+                <span className={`section-badge ${hasBankrKey ? 'badge-active' : 'badge-inactive'}`}>
+                  {hasBankrKey ? 'Connected' : 'Not set'}
                 </span>
               </div>
               <label className="checkbox-row">
@@ -227,7 +223,7 @@ export function App() {
                   placeholder="Bankr API key"
                   disabled={saving}
                 />
-                <p className="field-help">Powers both trading + AI (LLM Gateway). Get from bankr.bot/api</p>
+                <p className="field-help">Powers AI fallback (LLM Gateway) + one-click trading.</p>
               </div>
               <div className="field-group">
                 <label className="field-label">Bankr Username (Optional)</label>
@@ -236,7 +232,7 @@ export function App() {
                   className="field-input"
                   value={settings.bankrUsername}
                   onChange={e => setSettings({ ...settings, bankrUsername: e.target.value })}
-                  placeholder="@drdeeks"
+                  placeholder="@yourusername"
                   disabled={saving}
                 />
               </div>
@@ -247,11 +243,13 @@ export function App() {
               <div className="section-header">
                 <span className="section-icon">📡</span>
                 <span className="section-label">Neynar Trending</span>
-                <span className="section-badge badge-active">Auto (Built-in)</span>
+                <span className="section-badge badge-active">Auto</span>
               </div>
-              <p className="field-help" style={{ padding: '0 0 8px 0' }}>
-                Trending Farcaster context is auto-fetched. No API key required.
-              </p>
+              <div className="field-group">
+                <p className="field-help">
+                  Trending Farcaster context is fetched automatically. No API key required.
+                </p>
+              </div>
             </div>
 
             {/* Response Types */}
@@ -259,46 +257,32 @@ export function App() {
               <div className="section-header">
                 <span className="section-icon">💬</span>
                 <span className="section-label">Response Types</span>
-                <span className="section-badge badge-active">
-                  {[
-                    settings.responseTypes?.agreeReply,
-                    settings.responseTypes?.againstReply,
-                    settings.responseTypes?.forQuote,
-                    settings.responseTypes?.againstQuote
-                  ].filter(Boolean).length} active
-                </span>
               </div>
-              <div className="response-types-grid">
-                {[
-                  { key: 'agreeReply', label: 'Agree Reply' },
-                  { key: 'againstReply', label: 'Counter Reply' },
-                  { key: 'forQuote', label: 'For Quote' },
-                  { key: 'againstQuote', label: 'Against Quote' }
-                ].map(({ key, label }) => (
-                  <label key={key} className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={!!(settings.responseTypes as unknown as Record<string, boolean>)?.[key]}
-                      onChange={e => setSettings({
-                        ...settings,
-                        responseTypes: {
-                          ...(settings.responseTypes || {}),
-                          [key]: e.target.checked
-                        } as Settings['responseTypes']
-                      })}
-                      disabled={saving}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
+              {[
+                { key: 'agreeReply' as const, label: 'Agree Reply' },
+                { key: 'againstReply' as const, label: 'Counter Reply' },
+                { key: 'forQuote' as const, label: 'For Quote' },
+                { key: 'againstQuote' as const, label: 'Against Quote' },
+              ].map(({ key, label }) => (
+                <label key={key} className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={!!(settings.responseTypes as unknown as Record<string, boolean>)?.[key]}
+                    onChange={e => setSettings({
+                      ...settings,
+                      responseTypes: {
+                        ...(settings.responseTypes || {}),
+                        [key]: e.target.checked
+                      } as Settings['responseTypes']
+                    })}
+                    disabled={saving}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
             </div>
 
-            <button
-              className="save-btn"
-              onClick={handleSave}
-              disabled={saving || loading}
-            >
+            <button className="save-btn" onClick={handleSave} disabled={saving || loading}>
               {saving ? 'Saving…' : 'Save Settings'}
             </button>
 
