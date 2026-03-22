@@ -1,3 +1,4 @@
+import { injectStyles } from "./injectStyles";
 interface ResponseTypeSettings {
   agreeReply: boolean;
   againstReply: boolean;
@@ -164,6 +165,8 @@ async function getSettingsFromStorage(): Promise<Settings | null> {
 }
 
 export async function contentScript() {
+  injectStyles();
+  
   if (document.readyState !== 'complete') {
     await new Promise(resolve => window.addEventListener('load', resolve, { once: true }));
   }

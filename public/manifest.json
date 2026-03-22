@@ -54,9 +54,7 @@
       "js": [
         "content.js"
       ],
-      "css": [
-        "content.css"
-      ]
+      "css": []
     }
   ],
   "background": {
