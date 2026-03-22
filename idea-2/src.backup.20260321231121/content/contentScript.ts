@@ -140,20 +140,14 @@ export async function contentScript() {
 }
 
 function detectPlatform(): Platform | null {
-  const host = window.location.hostname.toLowerCase();
-  // Farcaster: warpcast.com now redirects to farcaster.xyz
   if (
-    host.includes('farcaster')
-    || host.includes('warpcast')
-    || host === 'farcaster.xyz'
-    || host.endsWith('.farcaster.xyz')
-    || host === 'farcaster.com'
-    || host.endsWith('.farcaster.com')
+    window.location.hostname.includes('farcaster')
+    || window.location.hostname.includes('warpcast')
   ) {
     return 'farcaster';
   }
-  if (host.includes('twitter') || host === 'x.com' || host.endsWith('.x.com')) return 'twitter';
-  if (host.includes('reddit')) return 'reddit';
+  if (window.location.hostname.includes('twitter') || window.location.hostname === 'x.com' || window.location.hostname.endsWith('.x.com')) return 'twitter';
+  if (window.location.hostname.includes('reddit')) return 'reddit';
   return null;
 }
 
@@ -367,37 +361,6 @@ function addReplyButtons(post: Post) {
   }
 }
 
-function makeDraggable(el: HTMLElement) {
-  const dragBar = document.createElement('div');
-  dragBar.style.cssText = 'cursor:grab;padding:4px 0 2px;display:flex;justify-content:center;';
-  const dragHandle = document.createElement('div');
-  dragHandle.style.cssText = 'width:32px;height:3px;background:#444;border-radius:2px;';
-  dragBar.appendChild(dragHandle);
-  el.insertBefore(dragBar, el.firstChild);
-
-  let isDragging = false, offX = 0, offY = 0;
-  dragBar.addEventListener('mousedown', (e) => {
-    isDragging = true;
-    dragBar.style.cursor = 'grabbing';
-    const rect = el.getBoundingClientRect();
-    offX = e.clientX - rect.left;
-    offY = e.clientY - rect.top;
-    el.style.right = 'auto';
-    el.style.bottom = 'auto';
-    el.style.left = rect.left + 'px';
-    el.style.top = rect.top + 'px';
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
-    el.style.left = (e.clientX - offX) + 'px';
-    el.style.top = (e.clientY - offY) + 'px';
-  });
-  document.addEventListener('mouseup', () => {
-    if (isDragging) { isDragging = false; dragBar.style.cursor = 'grab'; }
-  });
-}
-
 function ensureFarcasterFallbackLauncher() {
   if (document.getElementById(FARCASTER_FALLBACK_ID)) {
     return;
@@ -430,7 +393,6 @@ function ensureFarcasterFallbackLauncher() {
   fallback.appendChild(title);
   fallback.appendChild(description);
   fallback.appendChild(actionButton);
-  makeDraggable(fallback);
   document.body.appendChild(fallback);
 }
 
@@ -499,7 +461,6 @@ function renderManualSuggestionPanel(suggestions: ReplySuggestion[]) {
     panel.appendChild(button);
   });
 
-  makeDraggable(panel);
   document.body.appendChild(panel);
 }
 
@@ -875,103 +836,50 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
     tokenSelect.appendChild(opt);
   }
 
-  // Bidirectional amount input (ETH ↔ USD)
-  let inputMode: 'eth' | 'usd' = 'eth';
-  let ethPrice = 0;
-
+  // Amount input
   const amountLabel = document.createElement('label');
+  amountLabel.textContent = 'Amount (ETH)';
   amountLabel.style.cssText = 'display:block;font-size:12px;color:#888;margin-bottom:4px;';
-
-  const amountRow = document.createElement('div');
-  amountRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:4px;';
-
   const amountInput = document.createElement('input');
   amountInput.type = 'number';
-  amountInput.step = 'any';
+  amountInput.step = '0.01';
   amountInput.min = '0';
   amountInput.value = '0.1';
   amountInput.placeholder = '0.1';
-  amountInput.style.cssText = 'flex:1;padding:10px;border-radius:8px;border:1px solid #333;background:#16213e;color:#fff;font-size:14px;box-sizing:border-box;';
+  amountInput.style.cssText = 'width:100%;padding:10px;border-radius:8px;border:1px solid #333;background:#16213e;color:#fff;font-size:14px;margin-bottom:4px;box-sizing:border-box;';
 
-  const toggleBtn = document.createElement('button');
-  toggleBtn.style.cssText = 'padding:10px 14px;border-radius:8px;border:1px solid #333;background:#16213e;color:#a78bfa;font-size:14px;cursor:pointer;white-space:nowrap;font-weight:600;';
-  toggleBtn.textContent = 'ETH';
-  toggleBtn.title = 'Click to switch between ETH and USD';
-
+  // USD estimate display
   const usdEstimate = document.createElement('div');
   usdEstimate.style.cssText = 'font-size:12px;color:#888;margin-bottom:16px;';
   usdEstimate.textContent = '≈ $0.00 USD';
 
-  function updateLabelsAndEstimate() {
-    const val = parseFloat(amountInput.value) || 0;
-    if (inputMode === 'eth') {
-      amountLabel.textContent = 'Amount (ETH)';
-      toggleBtn.textContent = 'ETH';
-      usdEstimate.textContent = ethPrice > 0 ? `≈ $${(val * ethPrice).toFixed(2)} USD` : 'fetching price...';
-    } else {
-      amountLabel.textContent = 'Amount (USD)';
-      toggleBtn.textContent = 'USD';
-      usdEstimate.textContent = ethPrice > 0 ? `≈ ${(val / ethPrice).toFixed(6)} ETH` : 'fetching price...';
-    }
-  }
-
-  toggleBtn.onclick = () => {
-    const val = parseFloat(amountInput.value) || 0;
-    if (inputMode === 'eth' && ethPrice > 0) {
-      inputMode = 'usd';
-      amountInput.value = (val * ethPrice).toFixed(2);
-      amountInput.step = '1';
-      amountInput.placeholder = '100';
-    } else if (inputMode === 'usd' && ethPrice > 0) {
-      inputMode = 'eth';
-      amountInput.value = (val / ethPrice).toFixed(6);
-      amountInput.step = 'any';
-      amountInput.placeholder = '0.1';
-    }
-    updateLabelsAndEstimate();
-  };
-
-  // Fetch ETH price
+  // Fetch ETH price and update estimate
+  let ethPrice = 0;
   fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd')
     .then(r => r.json())
     .then(data => {
       ethPrice = data?.ethereum?.usd || 0;
-      updateLabelsAndEstimate();
+      const val = parseFloat(amountInput.value) || 0;
+      usdEstimate.textContent = ethPrice > 0 ? `≈ $${(val * ethPrice).toFixed(2)} USD` : '';
     })
-    .catch(() => { usdEstimate.textContent = 'price unavailable'; });
+    .catch(() => { usdEstimate.textContent = ''; });
 
-  amountInput.addEventListener('input', updateLabelsAndEstimate);
-
-  amountRow.appendChild(amountInput);
-  amountRow.appendChild(toggleBtn);
-
-  // Helper to get ETH amount regardless of input mode
-  function getEthAmount(): number {
+  amountInput.addEventListener('input', () => {
     const val = parseFloat(amountInput.value) || 0;
-    if (inputMode === 'usd' && ethPrice > 0) return val / ethPrice;
-    return val;
-  }
+    usdEstimate.textContent = ethPrice > 0 ? `≈ $${(val * ethPrice).toFixed(2)} USD` : '';
+  });
 
   // Quick amount buttons
   const quickAmounts = document.createElement('div');
   quickAmounts.style.cssText = 'display:flex;gap:8px;margin-bottom:16px;';
-  for (const preset of [
-    { eth: 0.01, usd: '$5' },
-    { eth: 0.05, usd: '$25' },
-    { eth: 0.1, usd: '$50' },
-    { eth: 0.5, usd: '$250' }
-  ]) {
+  for (const amt of [0.01, 0.05, 0.1, 0.5]) {
     const btn = document.createElement('button');
+    btn.textContent = `${amt} ETH`;
     btn.style.cssText = 'flex:1;padding:6px;border-radius:6px;border:1px solid #333;background:#16213e;color:#a78bfa;font-size:12px;cursor:pointer;';
-    btn.textContent = inputMode === 'eth' ? `${preset.eth} ETH` : preset.usd;
     btn.onmouseover = () => { btn.style.background = '#1a1a4e'; };
     btn.onmouseout = () => { btn.style.background = '#16213e'; };
     btn.onclick = () => {
-      if (inputMode === 'eth') {
-        amountInput.value = preset.eth.toString();
-      } else {
-        amountInput.value = preset.usd.replace('$', '');
-      }
+      amountInput.value = amt.toString();
       amountInput.dispatchEvent(new Event('input'));
     };
     quickAmounts.appendChild(btn);
@@ -996,7 +904,7 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
   swapBtn.onmouseover = () => { swapBtn.style.background = '#8b6fd4'; };
   swapBtn.onmouseout = () => { swapBtn.style.background = '#a78bfa'; };
   swapBtn.onclick = async () => {
-    const amount = getEthAmount();
+    const amount = parseFloat(amountInput.value);
     if (!amount || amount <= 0) {
       amountInput.style.borderColor = '#ff4444';
       return;
@@ -1012,8 +920,7 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
     statusArea.style.display = 'block';
     statusArea.style.background = '#16213e';
     statusArea.style.color = '#a78bfa';
-    const displayAmount = amount.toFixed(6);
-    statusArea.textContent = `Submitting: swap ${displayAmount} ETH → ${selectedToken} via Bankr...`;
+    statusArea.textContent = `Submitting: swap ${amount} ETH → ${selectedToken} via Bankr...`;
 
     try {
       // Use Bankr Agent API to submit the trade
@@ -1038,12 +945,29 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
         swapBtn.textContent = '✓ Submitted';
         swapBtn.style.background = '#1a3a1a';
       } else {
-        // API failed — try Uniswap V3 fallback
-        await attemptUniswapFallback(selectedToken, amount, connectedAddress, statusArea, swapBtn, overlay);
+        // API failed — fall back to opening Bankr with pre-filled params
+        const bankrUrl = `https://bankr.bot/?swap=${selectedToken}&amount=${amount}&from=ETH`;
+        statusArea.style.background = '#3a2a1a';
+        statusArea.style.color = '#fbbf24';
+        statusArea.innerHTML = `⚠️ API unavailable — opening Bankr directly...<br><small style="color:#888;">Complete the swap in the new tab</small>`;
+        swapBtn.textContent = 'Open Bankr ↗';
+        swapBtn.style.background = '#a78bfa';
+        swapBtn.disabled = false;
+        swapBtn.onclick = () => {
+          window.open(bankrUrl, '_blank', 'noopener,noreferrer');
+          overlay.remove();
+        };
       }
     } catch {
-      // Network error — try Uniswap V3 fallback
-      await attemptUniswapFallback(selectedToken, amount, connectedAddress, statusArea, swapBtn, overlay);
+      // Network error — open Bankr website as fallback
+      const bankrUrl = `https://bankr.bot/?swap=${selectedToken}&amount=${amount}&from=ETH`;
+      statusArea.style.background = '#3a1a1a';
+      statusArea.style.color = '#f87171';
+      statusArea.innerHTML = `❌ Network error — opening Bankr directly...`;
+      setTimeout(() => {
+        window.open(bankrUrl, '_blank', 'noopener,noreferrer');
+        overlay.remove();
+      }, 1500);
     }
   };
 
@@ -1055,7 +979,7 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
   modal.appendChild(tokenLabel);
   modal.appendChild(tokenSelect);
   modal.appendChild(amountLabel);
-  modal.appendChild(amountRow);
+  modal.appendChild(amountInput);
   modal.appendChild(usdEstimate);
   modal.appendChild(quickAmounts);
   modal.appendChild(statusArea);
@@ -1069,107 +993,6 @@ async function executeBankrTrade(post: Post, preDetectedTokens?: string[]) {
   document.addEventListener('keydown', escHandler);
 
   document.body.appendChild(overlay);
-}
-
-async function attemptUniswapFallback(
-  tokenSymbol: string,
-  ethAmount: number,
-  walletAddress: string,
-  statusArea: HTMLElement,
-  swapBtn: HTMLButtonElement,
-  overlay: HTMLElement
-) {
-  // Base chain addresses
-  const UNISWAP_ROUTER = '0x2626664c2603336E57B271c5C0b26F421741e481';
-  const WETH = '0x4200000000000000000000000000000000000006';
-  const USDC = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
-  
-  // Token address mapping (Base chain)
-  const tokenAddresses: Record<string, string> = {
-    'USDC': USDC,
-    'WETH': WETH,
-    'ETH': WETH
-  };
-
-  statusArea.style.background = '#2a2a4a';
-  statusArea.style.color = '#fbbf24';
-  statusArea.innerHTML = `⏳ Trying Uniswap V3...`;
-
-  // Check wallet connection
-  if (!walletAddress) {
-    statusArea.style.background = '#3a1a1a';
-    statusArea.style.color = '#f87171';
-    statusArea.innerHTML = `❌ Wallet not connected<br><small style="color:#888;">Please connect your wallet first</small>`;
-    swapBtn.textContent = 'Connect Wallet';
-    swapBtn.style.background = '#a78bfa';
-    swapBtn.disabled = false;
-    return;
-  }
-
-  const toToken = tokenAddresses[tokenSymbol.toUpperCase()];
-  if (!toToken) {
-    // Token not supported on Uniswap — fall back to Bankr website
-    const bankrUrl = `https://bankr.bot/?swap=${tokenSymbol}&amount=${ethAmount}&from=ETH`;
-    statusArea.style.background = '#3a2a1a';
-    statusArea.style.color = '#fbbf24';
-    statusArea.innerHTML = `⚠️ Token not available on Uniswap — opening Bankr...<br><small style="color:#888;">Complete the swap in the new tab</small>`;
-    swapBtn.textContent = 'Open Bankr ↗';
-    swapBtn.style.background = '#a78bfa';
-    swapBtn.disabled = false;
-    swapBtn.onclick = () => {
-      window.open(bankrUrl, '_blank', 'noopener,noreferrer');
-      overlay.remove();
-    };
-    return;
-  }
-
-  try {
-    const ethereum = (window as unknown as Record<string, unknown>).ethereum as {
-      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
-    } | undefined;
-
-    if (!ethereum) {
-      throw new Error('No wallet provider found');
-    }
-
-    // Prepare swap parameters
-    const amountInWei = BigInt(Math.floor(ethAmount * 1e18)).toString(16);
-    const deadline = Math.floor(Date.now() / 1000) + 600; // 10 minutes
-    
-    // Uniswap V3 exactInputSingle params (simplified)
-    // For a production implementation, you'd encode the full swap params
-    // This is a basic implementation showing the structure
-    
-    statusArea.innerHTML = `⏳ Preparing Uniswap swap...<br><small style="color:#888;">Please approve in your wallet</small>`;
-
-    // For now, we'll open Uniswap interface with pre-filled params
-    // A full implementation would require encoding the swap call and sending the transaction
-    const uniswapUrl = `https://app.uniswap.org/#/swap?chain=base&inputCurrency=ETH&outputCurrency=${toToken}&exactAmount=${ethAmount}&exactField=input`;
-    
-    statusArea.style.background = '#2a2a4a';
-    statusArea.style.color = '#a78bfa';
-    statusArea.innerHTML = `🦄 Opening Uniswap interface...<br><small style="color:#888;">Complete the swap in the new tab</small>`;
-    
-    swapBtn.textContent = 'Open Uniswap ↗';
-    swapBtn.style.background = '#a78bfa';
-    swapBtn.disabled = false;
-    swapBtn.onclick = () => {
-      window.open(uniswapUrl, '_blank', 'noopener,noreferrer');
-      overlay.remove();
-    };
-
-  } catch (error) {
-    // Final fallback: Bankr website
-    const bankrUrl = `https://bankr.bot/?swap=${tokenSymbol}&amount=${ethAmount}&from=ETH`;
-    statusArea.style.background = '#3a1a1a';
-    statusArea.style.color = '#f87171';
-    statusArea.innerHTML = `❌ Uniswap unavailable — opening Bankr...<br><small style="color:#888;">${error instanceof Error ? error.message : 'Unknown error'}</small>`;
-    
-    setTimeout(() => {
-      window.open(bankrUrl, '_blank', 'noopener,noreferrer');
-      overlay.remove();
-    }, 2000);
-  }
 }
 
 function extractTokens(content: string): string[] {

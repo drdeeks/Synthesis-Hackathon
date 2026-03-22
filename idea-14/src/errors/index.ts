@@ -112,7 +112,6 @@ export class AppError extends Error {
   public readonly requestId?: string;
   public readonly userActions: string[];
   public readonly context: Record<string, unknown>;
-  public readonly cause?: Error;
 
   constructor(
     code: ErrorCode,
