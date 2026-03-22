@@ -1,101 +1,127 @@
-import { useState, useEffect } from 'react'
-import { OpenAI } from 'openai'
-import ReplySuggestion from './ReplySuggestion'
+import { useState, useEffect } from 'react';
+import { getSettings } from '../../shared/storage';
 
 interface ReplySuggestion {
-  id: string
-  text: string
-  confidence: number
-  tokens: number
-  bankrTokens?: string[]
+  id: string;
+  text: string;
+  confidence: number;
+  tokens: number;
+  bankrTokens?: string[];
 }
 
-export default function ReplyComposer({ apiKey }: { apiKey: string }) {
-  const [loading, setLoading] = useState(false)
-  const [suggestions, setSuggestions] = useState<ReplySuggestion[]>([])
-  const [inputText, setInputText] = useState('')
-  const [selectedSuggestion, setSelectedSuggestion] = useState<ReplySuggestion | null>(null)
+export default function ReplyComposer() {
+  const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<ReplySuggestion[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [selectedSuggestion, setSelectedSuggestion] = useState<ReplySuggestion | null>(null);
+  const [apiKey, setApiKey] = useState('');
 
-  const veniceClient = new OpenAI({
-    apiKey: apiKey,
-    baseURL: 'https://api.venice.ai/api/v1',
-  })
+  useEffect(() => {
+    loadApiKey();
+  }, []);
+
+  async function loadApiKey() {
+    const settings = await getSettings();
+    if (settings?.veniceApiKey) {
+      setApiKey(settings.veniceApiKey);
+    }
+  }
 
   const getReplySuggestions = async () => {
     if (!apiKey) {
-      alert('Please enter your Venice API key in Settings')
-      return
+      alert('Please enter your Venice API key in Settings');
+      return;
     }
 
     if (inputText.trim().length < 5) {
-      alert('Please enter at least 5 characters of text')
-      return
+      alert('Please enter at least 5 characters of text');
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
     try {
-      const response = await veniceClient.chat.completions.create({
-        model: 'venice-uncensored',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an AI assistant that provides witty, thoughtful reply suggestions for social media posts. Keep replies under 280 characters.',
-          },
-          {
-            role: 'user',
-            content: `Generate 5 witty reply suggestions for this social media post: "${inputText}"`,
-          },
-        ],
-        max_tokens: 1500,
-        temperature: 0.7,
-      })
+      const settings = await getSettings();
+      if (!settings) {
+        throw new Error('No settings found');
+      }
 
-      const content = response.choices?.[0]?.message?.content ?? '';
-      const suggestions = content
+      const model = settings.veniceModel || 'venice-uncensored';
+      
+      const response = await fetch('https://api.venice.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an AI assistant that provides witty, thoughtful reply suggestions for social media posts. Keep replies under 280 characters.'
+            },
+            {
+              role: 'user',
+              content: `Generate 5 witty reply suggestions for this social media post: "${inputText}"`
+            }
+          ],
+          max_tokens: 1500,
+          temperature: 0.7
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content ?? '';
+      
+      const parsedSuggestions = content
         .split('\n\n')
-        .filter(s => s.trim().length > 0)
+        .filter((s: string) => s.trim().length > 0)
         .slice(0, 5)
-        .map((text, index) => ({
+        .map((text: string, index: number) => ({
           id: `suggestion-${index}`,
           text: text.trim(),
           confidence: Math.random() * 0.3 + 0.7,
           tokens: text.split(' ').length,
-          bankrTokens: getRelevantTokens(text),
+          bankrTokens: getRelevantTokens(text)
         }));
 
-      setSuggestions(suggestions);
+      setSuggestions(parsedSuggestions);
     } catch (error) {
-      console.error('Error getting suggestions:', error)
-      alert('Error generating suggestions. Please check your API key.')
+      console.error('Error getting suggestions:', error);
+      alert('Error generating suggestions. Please check your API key.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const getRelevantTokens = (text: string): string[] => {
-    const tokenMap = {
+    const tokenMap: Record<string, string> = {
       'bitcoin': 'BTC',
       'ethereum': 'ETH',
       'base': 'BASE',
       'solana': 'SOL',
       'polygon': 'MATIC',
       'defi': 'UNI',
-      'nft': 'ENS',
-    }
+      'nft': 'ENS'
+    };
 
-    const foundTokens: string[] = []
+    const foundTokens: string[] = [];
     for (const [keyword, token] of Object.entries(tokenMap)) {
       if (text.toLowerCase().includes(keyword)) {
-        foundTokens.push(token)
+        foundTokens.push(token);
       }
     }
-    return foundTokens
-  }
+    return foundTokens;
+  };
 
   const handleSuggestionClick = (suggestion: ReplySuggestion) => {
-    setSelectedSuggestion(suggestion)
-    navigator.clipboard.writeText(suggestion.text)
-  }
+    setSelectedSuggestion(suggestion);
+    navigator.clipboard.writeText(suggestion.text);
+  };
 
   return (
     <div className="reply-composer">
@@ -121,12 +147,17 @@ export default function ReplyComposer({ apiKey }: { apiKey: string }) {
           <h3>AI Suggestions</h3>
           <div className="suggestions-grid">
             {suggestions.map((suggestion) => (
-              <ReplySuggestion
+              <div
                 key={suggestion.id}
-                suggestion={suggestion}
+                className={`suggestion-card ${selectedSuggestion?.id === suggestion.id ? 'selected' : ''}`}
                 onClick={() => handleSuggestionClick(suggestion)}
-                isSelected={selectedSuggestion?.id === suggestion.id}
-              />
+              >
+                <p className="suggestion-text">{suggestion.text}</p>
+                <div className="suggestion-meta">
+                  <span>Confidence: {(suggestion.confidence * 100).toFixed(0)}%</span>
+                  <span>{suggestion.tokens} tokens</span>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -146,6 +177,7 @@ export default function ReplyComposer({ apiKey }: { apiKey: string }) {
                       key={token}
                       href={`https://bankr.bot/trade?tokenIn=ETH&tokenOut=${token}&amount=0.1`}
                       target="_blank"
+                      rel="noopener noreferrer"
                       className="bankr-btn"
                       title={`Trade ${token} with Bankr`}
                     >
@@ -159,5 +191,5 @@ export default function ReplyComposer({ apiKey }: { apiKey: string }) {
         </div>
       )}
     </div>
-  )
+  );
 }
