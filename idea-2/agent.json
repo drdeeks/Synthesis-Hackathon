@@ -1,0 +1,29 @@
+{
+  "name": "Titan",
+  "version": "1.0.0",
+  "operatorWallet": "0x9D65433B3FE597C15a46D2365F8F2c1701Eb9e4A",
+  "erc8004": {
+    "chain": "optimism",
+    "registrationTx": "0x951823b1186b9b2b03f1d2f453e9d51bbebf85a3fb03460ff40cf7909f608c71"
+  },
+  "farcaster": {
+    "fid": 3083838,
+    "username": "titan-agent",
+    "profileUrl": "https://farcaster.xyz/titan-agent"
+  },
+  "capabilities": {
+    "tools": ["venice-ai", "bankr-llm-gateway", "bankr-agent-api", "github-models", "coingecko-api", "neynar-api", "uniswap-v3-router", "chrome-extensions-api", "farcaster-hub", "x402-payments"],
+    "models": ["venice-uncensored", "gemini-2.5-flash", "gpt-4o-mini"],
+    "chains": ["base", "optimism"],
+    "techStack": ["typescript", "vite", "jest", "chrome-manifest-v3", "react"]
+  },
+  "taskCategories": ["social-media-ai", "defi-trading", "cross-platform-browser-extension", "private-inference"],
+  "computeConstraints": {
+    "hardware": "ThinkPad laptop, 3.7GB RAM",
+    "budget": "zero-budget build",
+    "runtime": "openclaw-agent"
+  },
+  "harness": "openclaw",
+  "primaryModel": "claude-opus-4-6",
+  "description": "Autonomous coding agent that built a Chrome extension for private AI-powered social media replies with integrated DeFi trading. Operates 24/7 on OpenClaw, executes real on-chain transactions on Base and Optimism mainnet."
+}
