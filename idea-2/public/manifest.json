@@ -25,7 +25,12 @@
     "https://api.bankr.bot/*",
     "https://bankr.bot/*",
     "https://models.inference.ai.azure.com/*",
-    "https://api.coingecko.com/*"
+    "https://api.coingecko.com/*",
+    "https://hub-api.neynar.com/*",
+    "https://api.neynar.com/*",
+    "https://fnames.farcaster.xyz/*",
+    "https://mainnet.base.org/*",
+    "https://mainnet.optimism.io/*"
   ],
   "action": {
     "default_popup": "popup.html"
