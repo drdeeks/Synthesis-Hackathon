@@ -1,13 +1,133 @@
 import { useState, useEffect } from 'react';
-import { getSettings, saveSettings } from '../shared/storage';
+import { getSettings, saveSettings, type Settings } from '../shared/storage';
 
-interface Settings {
-  veniceApiKey: string;
-  bankrEnabled: boolean;
+function getExtensionVersion(): string {
+  const chromeApi = (globalThis as { chrome?: { runtime?: { getManifest?: () => { version?: string } } } }).chrome;
+  return chromeApi?.runtime?.getManifest?.()?.version || 'dev';
+}
+
+interface KeyValidationResult {
+  valid: boolean;
+  normalizedKey: string;
+  message?: string;
+}
+
+function normalizeApiKeyInput(rawValue: string): string {
+  let normalized = rawValue.trim();
+  if (!normalized) return '';
+
+  const assignmentMatch = normalized.match(/(?:VENICE_INFERENCE_KEY|VENICE_API_KEY)\s*=\s*(.+)$/i);
+  if (assignmentMatch) {
+    normalized = assignmentMatch[1].trim();
+  }
+
+  normalized = normalized.replace(/^Bearer\s+/i, '').trim();
+
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'")) ||
+    (normalized.startsWith('`') && normalized.endsWith('`'))
+  ) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+
+  return normalized;
+}
+
+async function getResponseSnippet(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    return text.slice(0, 180);
+  } catch {
+    return '';
+  }
+}
+
+async function validateVeniceApiKey(rawValue: string): Promise<KeyValidationResult> {
+  const normalizedKey = normalizeApiKeyInput(rawValue);
+
+  if (!normalizedKey) {
+    return {
+      valid: false,
+      normalizedKey: '',
+      message: 'Please enter a Venice API key.'
+    };
+  }
+
+  try {
+    const modelsResponse = await fetch('https://api.venice.ai/api/v1/models', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${normalizedKey}`
+      }
+    });
+
+    if (modelsResponse.ok) {
+      return { valid: true, normalizedKey };
+    }
+
+    if (modelsResponse.status === 404) {
+      const chatProbe = await fetch('https://api.venice.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${normalizedKey}`
+        },
+        body: JSON.stringify({
+          model: 'venice-uncensored',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+          temperature: 0
+        })
+      });
+
+      if (chatProbe.ok) {
+        return { valid: true, normalizedKey };
+      }
+
+      const snippet = await getResponseSnippet(chatProbe);
+      if (chatProbe.status === 401 || chatProbe.status === 403) {
+        return {
+          valid: false,
+          normalizedKey,
+          message: 'Venice rejected this key. Accepted examples include `vapi_...` or `VENICE_INFERENCE_KEY_...`.'
+        };
+      }
+
+      return {
+        valid: false,
+        normalizedKey,
+        message: `Unable to validate key (${chatProbe.status}). ${snippet || 'Please verify key format and try again.'}`
+      };
+    }
+
+    const modelsSnippet = await getResponseSnippet(modelsResponse);
+    if (modelsResponse.status === 401 || modelsResponse.status === 403) {
+      return {
+        valid: false,
+        normalizedKey,
+        message: 'Venice rejected this key. Try pasting only the key value, without `Bearer` unless needed.'
+      };
+    }
+
+    return {
+      valid: false,
+      normalizedKey,
+      message: `Unable to validate key (${modelsResponse.status}). ${modelsSnippet || 'Please try again.'}`
+    };
+  } catch (error) {
+    console.error('Venice API validation error:', error);
+    return {
+      valid: false,
+      normalizedKey,
+      message: 'Could not reach Venice API to validate the key. Check network and try again.'
+    };
+  }
 }
 
 export function App() {
-  const [settings, setSettings] = useState<Settings>({ veniceApiKey: '', bankrEnabled: true });
+  const [settings, setSettings] = useState<Settings>({ veniceApiKey: '', bankrUsername: '', bankrEnabled: true, bankrApiKey: '', githubToken: '' });
+  const [showSetup, setShowSetup] = useState(true);
   const [status, setStatus] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +141,12 @@ export function App() {
       setLoading(true);
       setError(null);
       const saved = await getSettings();
-      if (saved) setSettings(saved);
+      if (saved) {
+        setSettings(saved);
+        if (saved.veniceApiKey.trim()) {
+          setShowSetup(false);
+        }
+      }
     } catch (err) {
       setError('Failed to load settings. Check console.');
       console.error('Settings load error:', err);
@@ -34,8 +159,22 @@ export function App() {
     try {
       setLoading(true);
       setError(null);
-      await saveSettings(settings);
+
+      const validation = await validateVeniceApiKey(settings.veniceApiKey);
+      if (!validation.valid) {
+        setError(validation.message || 'Invalid Venice API key.');
+        return;
+      }
+
+      const normalizedSettings: Settings = {
+        ...settings,
+        veniceApiKey: validation.normalizedKey
+      };
+
+      await saveSettings(normalizedSettings);
+      setSettings(normalizedSettings);
       setStatus('Settings saved successfully!');
+      setShowSetup(false);
       setTimeout(() => setStatus(''), 2000);
     } catch (err) {
       setError('Failed to save settings. Check API key.');
@@ -45,66 +184,131 @@ export function App() {
     }
   }
 
+  const maskedKey = settings.veniceApiKey.trim()
+    ? `••••${settings.veniceApiKey.trim().slice(-4)}`
+    : 'Not set';
+  const extensionVersion = getExtensionVersion();
+
+  const manifestStatus = extensionVersion === 'dev'
+    ? 'Manifest unavailable (non-extension context)'
+    : `Manifest loaded · v${extensionVersion}`;
+
   return (
-    <div className="p-4 w-80 min-h-[400px]">
-      <h1 className="text-lg font-bold mb-4">Venice Reply Composer</h1>
-      
+    <div className="popup-shell">
+      <header className="popup-hero">
+        <p className="hero-eyebrow">Venice + Bankr</p>
+        <h1>Venice Reply Composer</h1>
+        <p className="hero-subtitle">AI replies for social posts, with quick Bankr trade links.</p>
+      </header>
+
+      <main className="popup-content">
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-3 py-2 rounded mb-4">
-          {error}
-          <button className="ml-2 text-red-600 hover:text-red-800" onClick={() => setError(null)}>
+        <div className="status-card status-error">
+          <span>{error}</span>
+          <button className="status-dismiss" onClick={() => setError(null)}>
             ×
           </button>
         </div>
       )}
 
       {loading ? (
-        <div className="flex justify-center items-center h-32">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <div className="loading-wrap">
+          <div className="loading-spinner"></div>
+          <p>Loading your settings…</p>
         </div>
+      ) : !showSetup ? (
+        <section className="panel-stack">
+          <div className="status-card status-success">
+            <p className="status-title">Configuration Saved</p>
+            <p className="status-copy">The extension is ready on Farcaster, X/Twitter, and Reddit.</p>
+          </div>
+
+          <div className="info-card">
+            <p className="info-label">Venice API Key</p>
+            <p className="info-value mono-text">{maskedKey}</p>
+          </div>
+
+          <div className="info-card">
+            <p className="info-label">Bankr Username</p>
+            <p className="info-value">{settings.bankrUsername.trim() || 'Not set'}</p>
+            <p className="info-note">Optional. Stored for your own reference.</p>
+          </div>
+
+          <div className="info-card">
+            <p className="info-label">Bankr Integration</p>
+            <p className="info-value">{settings.bankrEnabled ? 'Enabled' : 'Disabled'}</p>
+          </div>
+
+          <button
+            className="action-btn secondary-btn"
+            onClick={() => setShowSetup(true)}
+            disabled={loading}
+          >
+            Edit Settings
+          </button>
+
+          {status && <p className="inline-status">{status}</p>}
+        </section>
       ) : (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">Venice API Key</label>
+        <section className="panel-stack">
+          <div className="field-wrap">
+            <label className="field-label">Venice API Key</label>
             <input
               type="password"
-              className="w-full border rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="field-input"
               value={settings.veniceApiKey}
               onChange={e => setSettings({ ...settings, veniceApiKey: e.target.value })}
               placeholder="Enter API key"
               disabled={loading}
             />
+            <p className="field-help">Accepted: raw key (`vapi_...`), `VENICE_INFERENCE_KEY=...`, or `Bearer ...`.</p>
           </div>
-          <div className="flex items-center">
+
+          <div className="field-wrap">
+            <label className="field-label">Bankr Username (Optional)</label>
+            <input
+              type="text"
+              className="field-input"
+              value={settings.bankrUsername}
+              onChange={e => setSettings({ ...settings, bankrUsername: e.target.value })}
+              placeholder="e.g. @yourbankrhandle"
+              disabled={loading}
+            />
+          </div>
+
+          <label className="checkbox-row">
             <input
               type="checkbox"
               checked={settings.bankrEnabled}
               onChange={e => setSettings({ ...settings, bankrEnabled: e.target.checked })}
               disabled={loading}
             />
-            <span className="ml-2 text-sm">Enable Bankr integration</span>
-          </div>
+            <span>Enable Bankr integration</span>
+          </label>
+
           <button
-            className="w-full bg-blue-600 text-white rounded py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="action-btn primary-btn"
             onClick={handleSave}
             disabled={loading || !settings.veniceApiKey.trim()}
           >
             {loading ? 'Saving...' : 'Save Settings'}
           </button>
-          {status && <p className="text-green-600 text-sm mt-2 italic">{status}</p>}
-        </div>
+
+          {status && <p className="inline-status">{status}</p>}
+        </section>
       )}
 
-      {!settings.veniceApiKey.trim() && !loading && (
-        <div className="mt-6 p-3 bg-gray-50 rounded">
-          <p className="text-sm text-gray-600 mb-1">
-            ⚠️ Enter your Venice API key to enable AI reply suggestions.
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Get your key from the Venice AI dashboard.
-          </p>
+      {!settings.veniceApiKey.trim() && !loading && showSetup && (
+        <div className="info-banner">
+          <p>Enter your Venice API key to enable AI reply suggestions.</p>
+          <p>Get your key from the Venice AI dashboard.</p>
         </div>
       )}
+      </main>
+
+      <footer className="popup-footer">
+        <p>{manifestStatus}</p>
+      </footer>
     </div>
   );
 }

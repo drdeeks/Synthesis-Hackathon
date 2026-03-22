@@ -1,50 +1,52 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { getSettings, saveSettings } from '../src/shared/storage';
-
-jest.mock('../src/shared/storage');
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import Settings from '../src/popup/components/Settings';
 
 describe('Settings', () => {
+  const onSave = jest.fn();
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('renders settings form', () => {
-    (getSettings as jest.Mock).mockResolvedValue({ veniceApiKey: '', bankrEnabled: true });
-    render(<Settings />);
+    render(<Settings apiKey="" onSave={onSave} />);
+
     expect(screen.getByPlaceholderText(/Enter.*API key/i)).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save/i })).toBeInTheDocument();
+    expect(screen.getByText(/Bankr Configuration/i)).toBeInTheDocument();
   });
 
-  it('shows saved settings', async () => {
-    (getSettings as jest.Mock).mockResolvedValue({
-      veniceApiKey: 'test-key',
-      bankrEnabled: true,
-    });
-    render(<Settings />);
-    await screen.findByDisplayValue('test-key');
+  it('shows initial API key', () => {
+    render(<Settings apiKey="test-key" onSave={onSave} />);
+
     expect(screen.getByDisplayValue('test-key')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).toBeChecked();
   });
 
-  it('saves settings when form is submitted', async () => {
-    (getSettings as jest.Mock).mockResolvedValue({ veniceApiKey: '', bankrEnabled: true });
-    (saveSettings as jest.Mock).mockResolvedValue(undefined);
+  it('calls onSave when save button is clicked', () => {
+    render(<Settings apiKey="" onSave={onSave} />);
 
-    render(<Settings />);
-
-    await screen.findByPlaceholderText(/Enter.*API key/i);
     const input = screen.getByPlaceholderText(/Enter.*API key/i);
-    const checkbox = screen.getByRole('checkbox');
-    const button = screen.getByText(/Save/i);
+    const button = screen.getByRole('button', { name: /Save/i });
 
     fireEvent.change(input, { target: { value: 'new-key' } });
-    fireEvent.click(checkbox);
     fireEvent.click(button);
 
-    expect(saveSettings).toHaveBeenCalledWith({
-      veniceApiKey: 'new-key',
-      bankrEnabled: false,
+    expect(onSave).toHaveBeenCalledWith('new-key');
+  });
+
+  it('shows saved state and resets back to Save text', () => {
+    jest.useFakeTimers();
+    render(<Settings apiKey="" onSave={onSave} />);
+
+    const button = screen.getByRole('button', { name: /Save/i });
+    fireEvent.click(button);
+    expect(screen.getByRole('button', { name: /Saved!/i })).toBeInTheDocument();
+
+    act(() => {
+      jest.advanceTimersByTime(2000);
     });
+
+    expect(screen.getByRole('button', { name: /^Save$/i })).toBeInTheDocument();
+    jest.useRealTimers();
   });
 });

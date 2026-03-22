@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Venice AI Reply Composer",
-  "version": "1.0.0",
+  "version": "1.0.7",
   "description": "AI-powered reply suggestions with Bankr integration",
   "permissions": [
     "storage",
@@ -9,21 +9,38 @@
   ],
   "host_permissions": [
     "https://*.farcaster.xyz/*",
+    "https://farcaster.xyz/*",
+    "https://*.warpcast.com/*",
+    "https://warpcast.com/*",
+    "https://*.farcaster.com/*",
+    "https://farcaster.com/*",
     "https://*.twitter.com/*",
+    "https://twitter.com/*",
+    "https://*.x.com/*",
+    "https://x.com/*",
     "https://*.reddit.com/*",
+    "https://reddit.com/*",
     "https://api.venice.ai/*"
   ],
   "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://*.farcaster.xyz/*",
+        "https://farcaster.xyz/*",
+        "https://*.warpcast.com/*",
+        "https://warpcast.com/*",
+        "https://*.farcaster.com/*",
+        "https://farcaster.com/*",
+        "https://*.twitter.com/*",
+        "https://twitter.com/*",
+        "https://*.x.com/*",
+        "https://x.com/*",
+        "https://*.reddit.com/*",
+        "https://reddit.com/*"
+      ],
       "js": ["content.js"],
       "css": ["content.css"]
     }
@@ -31,10 +48,5 @@
   "background": {
     "service_worker": "background.js",
     "type": "module"
-  },
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
   }
 }
