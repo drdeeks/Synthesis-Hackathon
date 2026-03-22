@@ -20,7 +20,12 @@
     "https://x.com/*",
     "https://*.reddit.com/*",
     "https://reddit.com/*",
-    "https://api.venice.ai/*"
+    "https://api.venice.ai/*",
+    "https://llm.bankr.bot/*",
+    "https://api.bankr.bot/*",
+    "https://bankr.bot/*",
+    "https://models.inference.ai.azure.com/*",
+    "https://api.coingecko.com/*"
   ],
   "action": {
     "default_popup": "popup.html"
@@ -41,8 +46,12 @@
         "https://*.reddit.com/*",
         "https://reddit.com/*"
       ],
-      "js": ["content.js"],
-      "css": ["content.css"]
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ]
     }
   ],
   "background": {
