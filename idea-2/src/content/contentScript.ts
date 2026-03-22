@@ -86,12 +86,20 @@ function toSettings(raw: unknown): Settings | null {
 }
 
 async function getSettingsFromBackground(): Promise<Settings | null> {
-  try {
-    const response = await chrome.runtime.sendMessage({ action: 'getSettings' });
-    return toSettings(response);
-  } catch {
-    return null;
+  // MV3 service workers can be sleeping — retry up to 3x with backoff
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const response = await Promise.race([
+        chrome.runtime.sendMessage({ action: 'getSettings' }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000))
+      ]);
+      if (response) return toSettings(response);
+    } catch {
+      // Service worker sleeping or context invalidated — wait and retry
+    }
+    if (attempt < 2) await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
   }
+  return null;
 }
 
 async function getSettingsFromStorage(): Promise<Settings | null> {
@@ -121,14 +129,17 @@ export async function contentScript() {
   }
 
   cachedSettings = await getSettingsFromStorage();
-  if (!cachedSettings || !cachedSettings.veniceApiKey.trim()) {
-    console.log('Venice Reply Composer: No API key configured');
-    return;
-  }
 
   const platform = detectPlatform();
   if (!platform) {
-    console.log('Venice Reply Composer: Unsupported platform');
+    return;
+  }
+
+  if (!cachedSettings || !cachedSettings.veniceApiKey.trim()) {
+    // No API key — show a configure prompt on Farcaster so the extension is visible
+    if (platform === 'farcaster') {
+      window.setTimeout(() => ensureFarcasterFallbackLauncher(), 1400);
+    }
     return;
   }
 
