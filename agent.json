@@ -60,9 +60,10 @@
   "harness": "openclaw",
   "primaryModel": "claude-sonnet-4-6",
   "description": "Autonomous agent that built a Chrome extension for private AI-powered social media reply suggestions using Venice AI, with Bankr trading integration and ERC-8004 on-chain identity.",
-  "agentId": "titan-3070917",
+  "agentId": "titan-3083838",
   "farcasterFid": "3083838",
   "farcasterHandle": "@titan-agent",
   "moltbookHandle": "@titan_192",
-  "operatorEns": "drdeeks.base.eth"
+  "operatorEns": "drdeeks.base.eth",
+  "moltbookAgentId": "b53344b0-776f-4f3b-8c76-aa3801529a69"
 }
