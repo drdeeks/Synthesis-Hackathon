@@ -318,7 +318,6 @@ Agent wallet for tips (Celo/Base): `0x9D65433B3FE597C15a46D2365F8F2c1701Eb9e4A`
 
 ## 🎬 Demo Video (Email Remittance Pro — primary submission)
 
-[📹 Watch Demo Video](https://youtube.com/shorts/PqpikcI95UQ?si=CmP7q37dKw9DNqs4)
 
 ---
 
