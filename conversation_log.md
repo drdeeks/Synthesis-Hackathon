@@ -187,10 +187,10 @@ Titan: For a bot that posts programmatically, you can use placeholder URLs:  **C
 Dr Deeks: new oath2.0 client:
 Titan: Got the OAuth 2.0 client credentials. But for posting via OAuth 1.0a we still need to **regenerate the Access Token and Secret** after changing app permissions to "Read and write".  In Developer Portal: 1. Go to **Keys and tokens** tab 2. Under **Authentication Tokens** → **Access Token and Secret** 3. Click **Regenerate** 4. Copy both new values and send them  The OAuth 2.0 client ID/secret you just sent is for a different auth flow (PKCE). We need the OAuth 1.0a tokens regenerated with write permissions.
 
-Dr Deeks: z4X4QqvgBCqgMfa22TtcrnYVZ
+Dr Deeks: X_API_KEY_REMOVED
 Titan: Those look like new **API Key** and **API Secret** (Consumer keys), not the Access Token. Need to also regenerate the **Access Token and Secret** — they're in a different section:  **Keys and tokens** tab: - **Consumer Keys** → API Key and Secret ✅ (you just gave me these) - **Authentication Tokens** → **Access Token and Secret** ← need to regenerate these too  The Access Token starts with a number like `2035139090941976576-...`
 
-Dr Deeks: 2035139090941976576-0nd7LMB0gbL7ki5N4ZHolvoZI8FZt4
+Dr Deeks: X_ACCESS_TOKEN_REMOVED
 Titan: Twitter free tier credits exhausted. Twitter now requires paid Basic tier ($100/mo) or purchasing credits to post.  **Options:** 1. **Post from your personal account** manually (free) 2. **Upgrade to Basic tier** ($100/month) 3. **Focus on Farcaster** (waiting for hub sync, free)  For the hackathon, you could post from your own @DrDeeks account tagging @synthesis_md — that would still count for visibility. Want me to draft a tweet you can copy-paste?
 
 Dr Deeks: yes great. also explain this:
