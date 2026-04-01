@@ -6,8 +6,14 @@
 [![Chrome Extension](https://img.shields.io/badge/Chrome-Manifest%20V3-blue)](./public/manifest.json)
 [![ERC-8004](https://img.shields.io/badge/ERC--8004-Base%20Mainnet-purple)](https://eips.ethereum.org/EIPS/eip-8004)
 [![Venice AI](https://img.shields.io/badge/Venice%20AI-Private%20Inference-orange)](https://venice.ai)
+[![PL_Genesis](https://img.shields.io/badge/PL__Genesis-Fresh%20Code-9cf)](https://pl-genesis-frontiers-of-collaboration.devspot.app/)
+[![Bankr LLM](https://img.shields.io/badge/Bankr-LLM%20Gateway-purple)](https://bankr.com)
+[![Lit Protocol](https://img.shields.io/badge/Lit%20Protocol-NextGen%20AI%20Apps-cyan)](https://lit.dev)
+[![World ID](https://img.shields.io/badge/World%20ID-Build%203-20c997)](https://worldcoin.dev)
 
 ---
+
+## 🏆 PL_Genesis Submission
 
 ## 🎯 Problem
 

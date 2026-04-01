@@ -21,32 +21,33 @@
   "capabilities": {
     "tools": [
       "venice-ai",
-      "bankr-llm-gateway",
-      "bankr-agent-api",
-      "github-models",
-      "coingecko-api",
-      "neynar-api",
-      "uniswap-v3-router",
-      "chrome-extensions-api",
+      "bankr-llm",
+      "lit-protocol",
+      "world-id",
       "farcaster-hub",
-      "x402-payments"
+      "chrome-extensions-api"
     ],
     "models": [
-      "venice-uncensored",
-      "gemini-2.5-flash",
-      "gpt-4o-mini"
-    ],
-    "chains": [
-      "base",
-      "optimism"
+      "venice-uncensored"
     ],
     "techStack": [
       "typescript",
-      "vite",
-      "jest",
-      "chrome-manifest-v3",
-      "react"
+      "chrome-extension",
+      "ethers"
     ]
+  },
+  "integrations": {
+    "litProtocol": {
+      "enabled": true,
+      "method": "mocked_hmac_sha256",
+      "signsAgentLog": true
+    },
+    "worldId": {
+      "enabled": true,
+      "verificationHeader": "x-world-id-token",
+      "mockAccept": true,
+      "uiButton": true
+    }
   },
   "taskCategories": [
     "social-ai",
